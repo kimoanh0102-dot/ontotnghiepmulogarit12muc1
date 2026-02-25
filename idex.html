@@ -1,15 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, Trophy, Zap, Timer, ChevronRight, RotateCcw, Play, CheckCircle2, XCircle, User, ListOrdered, Download } from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot } from 'firebase/firestore';
-
-// --- KHỞI TẠO FIREBASE DATABASE (BẮT BUỘC ĐỂ LƯU DỮ LIỆU) ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 // --- NGÂN HÀNG 71 CÂU HỎI ---
 const questionBank = [
@@ -109,55 +99,22 @@ const MathText = ({ text }) => {
 };
 
 export default function App() {
-  // Trạng thái hệ thống (start -> name_entry -> playing -> result -> leaderboard)
   const [gameState, setGameState] = useState('start'); 
   const [questions, setQuestions] = useState([]);
-  const [user, setUser] = useState(null);
   const [playerName, setPlayerName] = useState('');
   const [leaderboard, setLeaderboard] = useState([]);
   
-  // Trạng thái trận đấu
   const [currentIndex, setCurrentIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(3);
   const [streak, setStreak] = useState(0);
-  const TIME_PER_QUESTION = 180; // 3 phút
+  const TIME_PER_QUESTION = 180;
   const [timeLeft, setTimeLeft] = useState(TIME_PER_QUESTION);
   
-  // Trạng thái trả lời
   const [selectedOption, setSelectedOption] = useState(null);
   const [isAnswering, setIsAnswering] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
-
-  // Hàm xuất dữ liệu ra file Excel (CSV) dành cho Giáo viên
-  const exportToCSV = () => {
-    if (leaderboard.length === 0) {
-      alert("Chưa có dữ liệu học sinh làm bài để xuất!");
-      return;
-    }
-    const headers = ['Hạng', 'Họ Tên Lớp', 'Điểm số', 'Số câu đúng', 'Tổng câu', 'Thời gian nộp bài'];
-    const rows = leaderboard.map((record, index) => [
-      index + 1,
-      `"${record.playerName}"`, // Bọc ngoặc kép để tránh lỗi nếu tên có dấu phẩy
-      record.score,
-      record.correctCount,
-      record.totalQuestions,
-      `"${new Date(record.timestamp).toLocaleString('vi-VN')}"`
-    ]);
-    
-    // Thêm \uFEFF ở đầu file để Excel trên Windows không bị lỗi font Tiếng Việt
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-      
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "Bang_Diem_Mu_Logarit.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // Load MathJax
   useEffect(() => {
@@ -175,37 +132,15 @@ export default function App() {
     }
   }, []);
 
-  // Thiết lập Firebase Auth
+  // Đọc Bảng Vàng từ localStorage mỗi khi vào màn hình leaderboard
   useEffect(() => {
-    const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+    if (gameState === 'leaderboard') {
+      const storedData = localStorage.getItem('logarit_leaderboard_local');
+      if (storedData) {
+        setLeaderboard(JSON.parse(storedData));
       }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, []);
-
-  // Nạp dữ liệu Bảng Vàng (Leaderboard) theo thời gian thực
-  useEffect(() => {
-    if (!user) return;
-    const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'student_records');
-    const unsubscribe = onSnapshot(recordsRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sắp xếp theo điểm giảm dần, nếu bằng điểm xếp theo số câu đúng
-      data.sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return b.correctCount - a.correctCount;
-      });
-      setLeaderboard(data);
-    }, (error) => {
-      console.error("Lỗi khi tải bảng vàng:", error);
-    });
-    return () => unsubscribe();
-  }, [user]);
+    }
+  }, [gameState]);
 
   // Bộ đếm thời gian
   useEffect(() => {
@@ -223,6 +158,33 @@ export default function App() {
     }
     return () => clearInterval(timer);
   }, [gameState, timeLeft, showExplanation]);
+
+  const exportToCSV = () => {
+    if (leaderboard.length === 0) {
+      alert("Chưa có dữ liệu học sinh làm bài để xuất!");
+      return;
+    }
+    const headers = ['Hạng', 'Họ Tên Lớp', 'Điểm số', 'Số câu đúng', 'Tổng câu', 'Thời gian nộp bài'];
+    const rows = leaderboard.map((record, index) => [
+      index + 1,
+      `"${record.playerName}"`,
+      record.score,
+      record.correctCount,
+      record.totalQuestions,
+      `"${new Date(record.timestamp).toLocaleString('vi-VN')}"`
+    ]);
+    
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "Bang_Diem_Mu_Logarit_Local.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleStartProcess = () => {
     setGameState('name_entry');
@@ -278,28 +240,32 @@ export default function App() {
     setShowExplanation(true);
   };
 
-  // Hàm chuyển câu & Kết thúc để lưu dữ liệu lên Firebase
-  const handleNextQuestion = async () => {
+  // Lưu điểm vào Bộ nhớ Trình Duyệt (localStorage) thay vì Firebase
+  const handleNextQuestion = () => {
     if (isGameOver || currentIndex >= questions.length - 1) {
-      // Lưu kết quả lên Cloud Firestore
-      if (user) {
-        try {
-          const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'student_records');
-          // Số câu đúng = Số câu đang chơi (nếu thua) hoặc = 20 (nếu thắng)
-          const isWinStatus = lives > 0;
-          const correctCount = isWinStatus ? 20 : currentIndex;
-          await addDoc(recordsRef, {
-            playerName: playerName.trim(),
-            score: score,
-            correctCount: correctCount,
-            totalQuestions: 20,
-            timestamp: Date.now(),
-            userId: user.uid
-          });
-        } catch (e) {
-          console.error("Lỗi khi lưu dữ liệu lên Database:", e);
-        }
-      }
+      const isWinStatus = lives > 0;
+      const correctCount = isWinStatus ? 20 : currentIndex;
+      
+      const newRecord = {
+        id: Date.now().toString(),
+        playerName: playerName.trim(),
+        score: score,
+        correctCount: correctCount,
+        totalQuestions: 20,
+        timestamp: Date.now()
+      };
+
+      const stored = localStorage.getItem('logarit_leaderboard_local');
+      let currentBoard = stored ? JSON.parse(stored) : [];
+      currentBoard.push(newRecord);
+      
+      // Sắp xếp hạng
+      currentBoard.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return b.correctCount - a.correctCount;
+      });
+
+      localStorage.setItem('logarit_leaderboard_local', JSON.stringify(currentBoard));
       setGameState('result');
     } else {
       setCurrentIndex((prev) => prev + 1);
@@ -310,7 +276,6 @@ export default function App() {
     }
   };
 
-  // --- UI: Màn hình Bắt đầu ---
   if (gameState === 'start') {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
@@ -322,7 +287,7 @@ export default function App() {
             Đấu Trường Mũ và Lôgarit
           </h1>
           <p className="text-slate-400 mb-8">
-            Học mà chơi, chơi mà học! Kết quả sẽ được lưu lại để gửi cho Giáo viên của bạn.
+            Bản hoạt động độc lập (Không cần Database). Kết quả sẽ được lưu trên máy tính của bạn.
           </p>
           
           <div className="space-y-4 text-left mb-8 bg-slate-900/50 p-4 rounded-xl">
@@ -361,7 +326,6 @@ export default function App() {
     );
   }
 
-  // --- UI: Nhập Tên Định Danh ---
   if (gameState === 'name_entry') {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
@@ -371,7 +335,7 @@ export default function App() {
           </div>
           <h2 className="text-2xl font-bold mb-4">Em tên là gì?</h2>
           <p className="text-slate-400 mb-6 text-sm">
-            Nhập Họ Tên và Lớp của em để hệ thống ghi nhận điểm số vào Bảng Xếp Hạng của lớp.
+            Nhập Họ Tên và Lớp của em để hệ thống ghi nhận điểm số.
           </p>
           <input 
             type="text" 
@@ -398,7 +362,6 @@ export default function App() {
     );
   }
 
-  // --- UI: Bảng Xếp Hạng (Dành cho Giáo viên & Học sinh) ---
   if (gameState === 'leaderboard') {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center py-10 px-4">
@@ -406,13 +369,13 @@ export default function App() {
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold flex items-center text-yellow-400">
               <Trophy className="w-8 h-8 mr-3 text-yellow-500" /> 
-              BẢNG VÀNG THÀNH TÍCH
+              BẢNG VÀNG LOCAL
             </h2>
             <div className="flex gap-2">
               <button 
                 onClick={exportToCSV}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg font-medium text-sm flex items-center transition-colors shadow-lg"
-                title="Tải xuống bảng điểm (Dành cho Giáo viên)"
+                title="Tải xuống bảng điểm"
               >
                 <Download className="w-4 h-4 mr-1" />
                 Xuất Excel
@@ -429,7 +392,7 @@ export default function App() {
           <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
             {leaderboard.length === 0 ? (
               <div className="text-center py-10 text-slate-400">
-                Chưa có dữ liệu nào. Hãy là người đầu tiên ghi tên lên bảng vàng!
+                Chưa có dữ liệu nào trên trình duyệt này.
               </div>
             ) : (
               <div className="space-y-3">
@@ -458,7 +421,6 @@ export default function App() {
     );
   }
 
-  // --- UI: Màn Hình Kết Quả ---
   if (gameState === 'result') {
     const isWin = lives > 0;
     return (
@@ -479,7 +441,7 @@ export default function App() {
             <p className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
               {score.toLocaleString()}
             </p>
-            <p className="text-xs text-emerald-400 mt-2">Đã tự động gửi lên hệ thống Giáo viên ✔</p>
+            <p className="text-xs text-emerald-400 mt-2">Đã lưu vào bộ nhớ trình duyệt ✔</p>
           </div>
 
           <div className="flex flex-col gap-3">
@@ -488,7 +450,7 @@ export default function App() {
               className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-lg flex items-center justify-center transition-all active:scale-95 shadow-lg shadow-indigo-600/30"
             >
               <ListOrdered className="w-6 h-6 mr-2" />
-              XEM BẢNG XẾP HẠNG LỚP
+              XEM BẢNG XẾP HẠNG
             </button>
             <button 
               onClick={() => setGameState('start')}
@@ -503,14 +465,12 @@ export default function App() {
     );
   }
 
-  // --- UI: Màn Hình Chơi (Trắc nghiệm) ---
   const currentQ = questions[currentIndex];
   
   return (
     <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col items-center py-6 px-4">
       <div className="max-w-3xl w-full flex-1 flex flex-col">
         
-        {/* Header Thông số */}
         <div className="flex justify-between items-center bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-lg mb-6">
           <div className="flex items-center space-x-1">
             {[...Array(3)].map((_, i) => (
@@ -534,7 +494,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Cột mốc Streak */}
         {streak > 1 && !showExplanation && (
           <div className="flex justify-center mb-4 min-h-[32px]">
             <div className="bg-orange-500/20 border border-orange-500/50 text-orange-400 px-4 py-1.5 rounded-full flex items-center text-sm font-bold animate-pulse">
@@ -544,7 +503,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Khung Câu Hỏi */}
         <div className="bg-slate-800 rounded-3xl p-6 md:p-10 shadow-xl border border-slate-700 flex flex-col relative overflow-hidden mb-6">
           <div className="absolute top-0 left-0 h-1.5 bg-slate-700 w-full">
             <div 
@@ -625,7 +583,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Khung Hướng dẫn giải */}
         {showExplanation && (
            <div className="bg-indigo-900/40 border border-indigo-500/50 rounded-3xl p-6 md:p-8 animate-in slide-in-from-bottom-8 fade-in shadow-xl mb-6">
               <h3 className="text-lg font-bold text-cyan-400 mb-3 flex items-center">
@@ -648,7 +605,6 @@ export default function App() {
 
       </div>
       
-      {/* Styles phụ trợ (Ví dụ scrollbar tùy chỉnh) */}
       <style dangerouslySetInnerHTML={{__html: `
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
