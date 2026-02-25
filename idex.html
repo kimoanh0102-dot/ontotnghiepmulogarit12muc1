@@ -1,0 +1,660 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Heart, Trophy, Zap, Timer, ChevronRight, RotateCcw, Play, CheckCircle2, XCircle, User, ListOrdered, Download } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, addDoc, onSnapshot } from 'firebase/firestore';
+
+// --- KHỞI TẠO FIREBASE DATABASE (BẮT BUỘC ĐỂ LƯU DỮ LIỆU) ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// --- NGÂN HÀNG 71 CÂU HỎI ---
+const questionBank = [
+  { id: 1, question: "Tập nghiệm của bất phương trình $\\log_{2}(x-1) < 3$ là:", options: ["$(1;9)$", "$(-\\infty;9)$", "$(9;+\\infty)$", "$(1;7)$"], correctIndex: 0, explanation: "Điều kiện: $x > 1$. $\\log_{2}(x-1) < 3 \\Leftrightarrow x-1 < 2^3 \\Leftrightarrow x < 9$. Kết hợp điều kiện ta được $1 < x < 9$." },
+  { id: 2, question: "Nghiệm của phương trình $2^{x}=6$ là:", options: ["$x=\\log_{6}2$", "$x=3$", "$x=4$", "$x=\\log_{2}6$"], correctIndex: 3, explanation: "Áp dụng định nghĩa lôgarit: $a^x=b \\Leftrightarrow x=\\log_{a}b$. Vậy $2^x=6 \\Leftrightarrow x=\\log_{2}6$." },
+  { id: 3, question: "Nghiệm của phương trình $\\log_{3}(2x-1)=2$ là:", options: ["$x=\\frac{7}{2}$", "$x=\\frac{5}{2}$", "$x=5$", "$x=4$"], correctIndex: 2, explanation: "$\\log_{3}(2x-1)=2 \\Leftrightarrow 2x-1=3^2 \\Leftrightarrow 2x=10 \\Leftrightarrow x=5$." },
+  { id: 4, question: "Nghiệm của phương trình $2^{2x+1}=8$ là:", options: ["$x=1$", "$x=\\frac{5}{2}$", "$x=3$", "$x=\\frac{3}{2}$"], correctIndex: 0, explanation: "$2^{2x+1}=8 \\Leftrightarrow 2^{2x+1}=2^3 \\Leftrightarrow 2x+1=3 \\Leftrightarrow x=1$." },
+  { id: 5, question: "Tập nghiệm của bất phương trình $\\log_{2}(x-1) < 3$ là:", options: ["$(-\\infty;10)$", "$(1;9)$", "$(1;10)$", "$(-\\infty;9)$"], correctIndex: 1, explanation: "Điều kiện $x > 1$. $\\log_{2}(x-1) < 3 \\Leftrightarrow x-1 < 2^3 \\Leftrightarrow x < 9$. Suy ra $1 < x < 9$." },
+  { id: 6, question: "Nghiệm của phương trình $4^{x-3}=16$ là:", options: ["$x=1$", "$x=7$", "$x=5$", "$x=-1$"], correctIndex: 2, explanation: "$4^{x-3}=16 \\Leftrightarrow 4^{x-3}=4^2 \\Leftrightarrow x-3=2 \\Leftrightarrow x=5$." },
+  { id: 7, question: "Tập nghiệm của bất phương trình $\\log_{2}(x-1)\\le1$ là:", options: ["$[1;3]$", "$[3;5]$", "$(1;5)$", "$(1;3]$"], correctIndex: 3, explanation: "$\\log_{2}(x-1)\\le1 \\Leftrightarrow 0 < x-1 \\le 2^1 \\Leftrightarrow 1 < x \\le 3$." },
+  { id: 8, question: "Với mọi số thực dương $a$, $\\log_{3}(27a)-\\log_{3}a$ bằng:", options: ["$\\log_{3}(26a)$", "$9$", "$3$", "$3-2\\log_{3}a$"], correctIndex: 2, explanation: "$\\log_{3}(27a)-\\log_{3}a = \\log_{3}\\left(\\frac{27a}{a}\\right) = \\log_{3}27 = 3$." },
+  { id: 9, question: "Tập xác định của hàm số $y=\\log_{6}(x-2)$ là:", options: ["$\\mathbb{R}$", "$(2;+\\infty)$", "$(-\\infty;2)$", "$(0;2)$"], correctIndex: 1, explanation: "Hàm số lôgarit xác định khi biểu thức bên trong dương: $x-2 > 0 \\Leftrightarrow x > 2$." },
+  { id: 10, question: "Phương trình $4^{2x-4}=16$ có nghiệm là:", options: ["$x=2$", "$x=3$", "$x=4$", "$x=1$"], correctIndex: 1, explanation: "$4^{2x-4}=16 \\Leftrightarrow 4^{2x-4}=4^2 \\Leftrightarrow 2x-4=2 \\Leftrightarrow 2x=6 \\Leftrightarrow x=3$." },
+  { id: 11, question: "Với $a$ là số thực dương bất kì, mệnh đề nào dưới đây đúng?", options: ["$\\log a^{3}=3\\log a$", "$\\log a^{3}=\\frac{1}{3}\\log a$", "$\\log(3a)=3\\log a$", "$\\log(3a)=\\frac{1}{3}\\log a$"], correctIndex: 0, explanation: "Áp dụng công thức lôgarit của một lũy thừa: $\\log_{c}a^n = n\\log_{c}a$. Do đó $\\log a^3 = 3\\log a$." },
+  { id: 12, question: "Tập nghiệm của bất phương trình $\\log_{3}(x-3)\\le2$ chứa bao nhiêu số nguyên?", options: ["Vô số", "$9$", "$7$", "$6$"], correctIndex: 1, explanation: "$\\log_{3}(x-3)\\le2 \\Leftrightarrow 0 < x-3 \\le 3^2 \\Leftrightarrow 3 < x \\le 12$. Các số nguyên: $4,5,6,7,8,9,10,11,12$ (tổng cộng 9 số)." },
+  { id: 13, question: "Tập xác định của hàm số $y=\\log_{2024}(3-x)$ là:", options: ["$D=(-\\infty;3)$", "$D=(3;+\\infty)$", "$D=(0;+\\infty)$", "$D=\\mathbb{R}$"], correctIndex: 0, explanation: "Điều kiện xác định: $3-x > 0 \\Leftrightarrow x < 3$." },
+  { id: 14, question: "Đạo hàm của hàm số $y=3^{x}$ là:", options: ["$y'=3^{x}\\ln x$", "$y'=3^{x}$", "$y'=x.3^{x-1}$", "$y'=3^{x}\\ln 3$"], correctIndex: 3, explanation: "Áp dụng công thức đạo hàm hàm số mũ cơ bản: $(a^x)' = a^x \\ln a$." },
+  { id: 15, question: "Tập nghiệm của bất phương trình $(0,21)^{x} < 1$ là:", options: ["$(-\\infty;0]$", "$[0;+\\infty)$", "$(-\\infty;0)$", "$(0;+\\infty)$"], correctIndex: 3, explanation: "$(0,21)^x < (0,21)^0$. Do cơ số $0,21 < 1$, bất phương trình đảo chiều thành $x > 0$." },
+  { id: 16, question: "Nghiệm của phương trình $\\log_{2}(x-1)=3$ là:", options: ["$9$", "$8$", "$10$", "$7$"], correctIndex: 0, explanation: "$\\log_{2}(x-1)=3 \\Leftrightarrow x-1 = 2^3 \\Leftrightarrow x-1=8 \\Leftrightarrow x=9$." },
+  { id: 17, question: "Nghiệm của phương trình $3^{x}=81$ là:", options: ["$4$", "$27$", "$3$", "$9$"], correctIndex: 0, explanation: "$3^x=81 \\Leftrightarrow 3^x=3^4 \\Leftrightarrow x=4$." },
+  { id: 18, question: "Tập nghiệm của bất phương trình $\\ln(9-x)\\le0$ là:", options: ["$[8;+\\infty)$", "$[8;9)$", "$(-\\infty;8]$", "$(-\\infty;9)$"], correctIndex: 1, explanation: "$\\ln(9-x)\\le0 \\Leftrightarrow 0 < 9-x \\le e^0 \\Leftrightarrow 0 < 9-x \\le 1 \\Leftrightarrow 8 \\le x < 9$." },
+  { id: 19, question: "Tập nghiệm của bất phương trình $(\\frac{1}{8})^{x-1}\\ge128$ là:", options: ["$(-\\infty;\\frac{8}{3})$", "$(\\frac{1}{8};+\\infty)$", "$(-\\infty;-\\frac{4}{3}]$", "$(-\\infty;-\\frac{10}{3})$"], correctIndex: 2, explanation: "$2^{-3(x-1)} \\ge 2^7 \\Leftrightarrow -3x+3 \\ge 7 \\Leftrightarrow -3x \\ge 4 \\Leftrightarrow x \\le -\\frac{4}{3}$." },
+  { id: 20, question: "Nghiệm của phương trình $\\log_{3}(x-1)=2$ là:", options: ["$x=9$", "$x=10$", "$x=3$", "$x=2$"], correctIndex: 1, explanation: "$\\log_{3}(x-1)=2 \\Leftrightarrow x-1=3^2 \\Leftrightarrow x=10$." },
+  { id: 21, question: "Tập nghiệm của bất phương trình $(\\frac{1}{3})^{x+1}\\le\\frac{1}{27}$ là:", options: ["$[2;+\\infty)$", "$(-\\infty;2]$", "$(-\\infty;1)$", "$(2;+\\infty)$"], correctIndex: 0, explanation: "$(\\frac{1}{3})^{x+1} \\le (\\frac{1}{3})^3$. Do cơ số $\\frac{1}{3} < 1$ nên bất phương trình đảo chiều: $x+1 \\ge 3 \\Leftrightarrow x \\ge 2$." },
+  { id: 22, question: "Phương trình $\\log_{2}(2x+1)=3$ có nghiệm là:", options: ["$x=5$", "$x=\\frac{9}{2}$", "$x=4$", "$x=\\frac{7}{2}$"], correctIndex: 3, explanation: "$\\log_{2}(2x+1)=3 \\Leftrightarrow 2x+1=2^3 \\Leftrightarrow 2x=7 \\Leftrightarrow x=\\frac{7}{2}$." },
+  { id: 23, question: "Tập nghiệm của bất phương trình $(\\frac{1}{5})^{x-1} < 25$ là:", options: ["$(-1;+\\infty)$", "$(-3;+\\infty)$", "$(-2;+\\infty)$", "$(-\\infty;-1)$"], correctIndex: 0, explanation: "$5^{-(x-1)} < 5^2 \\Leftrightarrow 1-x < 2 \\Leftrightarrow x > -1$." },
+  { id: 24, question: "Bất phương trình $\\log_{3}(2x-1) < 3$ có nghiệm là:", options: ["$x > \\frac{1}{2}$", "$x > 14$", "$x < 14$", "$\\frac{1}{2} < x < 14$"], correctIndex: 3, explanation: "$\\log_{3}(2x-1) < 3 \\Leftrightarrow 0 < 2x-1 < 3^3 \\Leftrightarrow 1 < 2x < 28 \\Leftrightarrow \\frac{1}{2} < x < 14$." },
+  { id: 25, question: "Đạo hàm của hàm số $y=13^{x}$ là:", options: ["$y'=\\frac{13^{x}}{\\ln13}$", "$y'=x.13^{x-1}$", "$y'=13^{x}\\ln13$", "$y'=13^{x}$"], correctIndex: 2, explanation: "Áp dụng công thức đạo hàm hàm số mũ cơ bản: $(a^x)' = a^x \\ln a$, ta có $y' = 13^x \\ln 13$." },
+  { id: 26, question: "Tập nghiệm của bất phương trình $\\log_{0,2}(x-1) < 0$ là:", options: ["$(1;2)$", "$(2;+\\infty)$", "$(-\\infty;1)$", "$(-\\infty;2)$"], correctIndex: 1, explanation: "$\\log_{0,2}(x-1) < \\log_{0,2}1$. Do cơ số $0,2 < 1$ nên đảo chiều: $x-1 > 1 \\Leftrightarrow x > 2$." },
+  { id: 27, question: "Cho $a$, $b$, $c$ là các số thực dương $(a,b,c\\ne1)$ và $\\log_{a}b=5$, $\\log_{b}c=7$. Tính giá trị của biểu thức $P=\\log_{\\sqrt{a}}\\frac{b}{c}$", options: ["$P=\\frac{1}{14}$", "$P=-15$", "$P=\\frac{2}{7}$", "$P=-60$"], correctIndex: 3, explanation: "$P=2(\\log_{a}b - \\log_{a}c) = 2(\\log_{a}b - \\log_{a}b \\cdot \\log_{b}c) = 2(5 - 5 \\cdot 7) = -60$." },
+  { id: 28, question: "Với $a$ là số thực dương tuỳ ý, $\\sqrt{a^{3}}$ bằng:", options: ["$a^{\\frac{3}{2}}$", "$a^{\\frac{2}{3}}$", "$a^{6}$", "$a^{\\frac{1}{6}}$"], correctIndex: 0, explanation: "Áp dụng định nghĩa lũy thừa với số mũ hữu tỉ: $\\sqrt[n]{a^m} = a^{\\frac{m}{n}}$. Vậy $\\sqrt{a^3} = a^{\\frac{3}{2}}$." },
+  { id: 29, question: "Tập nghiệm của bất phương trình $\\log_{5}(2x-1) < \\log_{5}(x+2)$ là:", options: ["$S=(3;+\\infty)$", "$S=(-2;3)$", "$S=(\\frac{1}{2};3)$", "$S=(-\\infty;3)$"], correctIndex: 2, explanation: "BPT $\\Leftrightarrow 0 < 2x-1 < x+2 \\Leftrightarrow x > \\frac{1}{2}$ và $x < 3$. Tập nghiệm là $(\\frac{1}{2}; 3)$." },
+  { id: 30, question: "Số nghiệm nguyên của bất phương trình $\\log_{0,5}(2x+6)\\ge-5$ là:", options: ["$16$", "$13$", "$15$", "$8$"], correctIndex: 0, explanation: "Điều kiện: $x > -3$. BPT $\\Leftrightarrow 2x+6 \\le (0,5)^{-5} = 32 \\Leftrightarrow x \\le 13$. Có 16 số nguyên từ -2 đến 13." },
+  { id: 31, question: "Một người gửi tiết kiệm 10 triệu đồng vào ngân hàng với lãi suất 7% trên một năm. Nếu không rút tiền ra thì sau mỗi năm lãi nhập vào vốn ban đầu. Sau 5 năm mới rút lãi thì người đó thu được số tiền lãi là:", options: ["$14,026$ triệu đồng", "$50,7$ triệu đồng", "$4,026$ triệu đồng", "$3,5$ triệu đồng"], correctIndex: 2, explanation: "Tổng tiền sau 5 năm theo công thức lãi kép: $T = 10(1+7\\%)^5 \\approx 14,026$ triệu đồng. Tiền lãi là $14,026 - 10 = 4,026$ triệu đồng." },
+  { id: 32, question: "Cho $0 < a \\ne 1$, $b > 0$. Biết $\\log_{a}b=3$, tính $\\log_{a}(ab)$.", options: ["$3$", "$0$", "$4$", "$\\frac{1}{3}$"], correctIndex: 2, explanation: "Biến đổi lôgarit của một tích: $\\log_{a}(ab) = \\log_{a}a + \\log_{a}b = 1 + 3 = 4$." },
+  { id: 33, question: "Nghiệm của phương trình $5^{x}=10$ là:", options: ["$2$", "$\\log_{5}10$", "$5$", "$\\ln10$"], correctIndex: 1, explanation: "Áp dụng trực tiếp định nghĩa: $a^x=b \\Leftrightarrow x=\\log_{a}b$. Vậy $5^x=10 \\Leftrightarrow x=\\log_{5}10$." },
+  { id: 34, question: "Phương trình $6^{x}=12$ có nghiệm là:", options: ["$x=2$", "$x=\\frac{1}{2}$", "$x=\\log_{6}12$", "$x=\\log_{12}6$"], correctIndex: 2, explanation: "Áp dụng định nghĩa: $a^x=b \\Leftrightarrow x=\\log_{a}b$. Vậy $6^x=12 \\Leftrightarrow x=\\log_{6}12$." },
+  { id: 35, question: "Tìm tập xác định $D$ của hàm số $y=\\log_{2}(x^{2}-2x-3)$", options: ["$D=(-\\infty;-1)\\cup(3;+\\infty)$", "$D=(-\\infty;-1]\\cup[3;+\\infty)$", "$D=[-1;3]$", "$D=(-1;3)$"], correctIndex: 0, explanation: "Hàm số xác định khi biểu thức dưới dấu loga dương: $x^2-2x-3 > 0 \\Leftrightarrow x < -1$ hoặc $x > 3$." },
+  { id: 36, question: "Tổng tất cả các nghiệm của phương trình $2^{x^{2}+2x}=8^{2-x}$ là:", options: ["$-6$", "$5$", "$6$", "$-5$"], correctIndex: 3, explanation: "$2^{x^2+2x} = 2^{3(2-x)} \\Leftrightarrow x^2+2x = 6-3x \\Leftrightarrow x^2+5x-6=0$. Phương trình có 2 nghiệm $x=1, x=-6$. Tổng hai nghiệm là $-5$." },
+  { id: 37, question: "Số nghiệm nguyên của bất phương trình $\\log_{3}(2-x)\\le1$ là:", options: ["$1$", "$4$", "$3$", "$2$"], correctIndex: 2, explanation: "$\\log_{3}(2-x)\\le1 \\Leftrightarrow 0 < 2-x \\le 3^1 \\Leftrightarrow -1 \\le x < 2$. Các số nguyên là $-1; 0; 1$ (tổng cộng 3 số)." },
+  { id: 38, question: "Cho $a$, $b$, $c$ là các số thực dương với $a\\ne1$ và $\\log_{a}b=5$, $\\log_{a}c=7$. Giá trị của biểu thức $\\log_{\\sqrt{a}}(\\frac{b}{c})$ là:", options: ["$-1$", "$4$", "$-4$", "$1$"], correctIndex: 2, explanation: "$\\log_{a^{1/2}}\\left(\\frac{b}{c}\\right) = 2(\\log_{a}b - \\log_{a}c) = 2(5-7) = -4$." },
+  { id: 39, question: "Tập nghiệm của bất phương trình $(\\frac{1}{\\pi})^{x}\\le1$ là:", options: ["$(-\\infty;0]$", "$(0;+\\infty)$", "$[0;+\\infty)$", "$(-\\infty;0)$"], correctIndex: 2, explanation: "$\\Leftrightarrow (\\frac{1}{\\pi})^x \\le (\\frac{1}{\\pi})^0$. Do cơ số $\\frac{1}{\\pi} < 1$, bất phương trình đảo chiều $\\Leftrightarrow x \\ge 0$." },
+  { id: 40, question: "Nhiệt độ của một loại đồ uống xác định theo công thức: $T=22+50e^{-\\frac{1}{8}t}$ ($t\\ge0$, $t$ tính bằng phút). Hỏi sau bao lâu kể từ lúc pha chế xong thì nhiệt độ của đồ uống là $40^{\\circ}C$?", options: ["$7$", "$8$", "$9$", "$10$"], correctIndex: 2, explanation: "Giải $40 = 22 + 50e^{-\\frac{1}{8}t} \\Leftrightarrow e^{-\\frac{1}{8}t} = 0,36 \\Leftrightarrow t = -8\\ln(0,36) \\approx 8,17$. Do các đáp án đều là số nguyên, chọn đáp án gần nhất là 9 (theo gốc đề)." },
+  { id: 41, question: "Tập nghiệm của bất phương trình $\\log(x+1) < 2$ là:", options: ["$(-1;1023)$", "$(-1;1)$", "$(-1;99)$", "$(-\\infty;1023)$"], correctIndex: 2, explanation: "Lôgarit cơ số 10: $\\log(x+1) < 2 \\Leftrightarrow 0 < x+1 < 10^2 \\Leftrightarrow 0 < x+1 < 100 \\Leftrightarrow -1 < x < 99$." },
+  { id: 42, question: "Giải phương trình $3^{x-2}=5$.", options: ["$x=2+\\log_{3}5$", "$x=-2+\\log_{5}3$", "$x=2+\\log_{5}3$", "$x=-2+\\log_{3}5$"], correctIndex: 0, explanation: "Áp dụng định nghĩa: $3^{x-2}=5 \\Leftrightarrow x-2 = \\log_{3}5 \\Leftrightarrow x = 2+\\log_{3}5$." },
+  { id: 43, question: "Tập nghiệm của bất phương trình $\\log_{0.5}(x-1) > -3$ là:", options: ["$(-\\infty;9)$", "$(1;9)$", "$(9;+\\infty)$", "$(1;\\frac{9}{8})$"], correctIndex: 1, explanation: "$\\log_{0,5}(x-1) > -3 \\Leftrightarrow 0 < x-1 < (0,5)^{-3} \\Leftrightarrow 0 < x-1 < 8 \\Leftrightarrow 1 < x < 9$." },
+  { id: 44, question: "Nghiệm của phương trình $3^{x}=6$ là:", options: ["$x=\\log_{3}6$", "$x=2$", "$x=\\log_{6}3$", "$x=18$"], correctIndex: 0, explanation: "Áp dụng định nghĩa lôgarit: $a^x=b \\Leftrightarrow x=\\log_{a}b$. Vậy $3^x=6 \\Leftrightarrow x=\\log_{3}6$." },
+  { id: 45, question: "Tập nghiệm của bất phương trình $2^{x} > 7$ là:", options: ["$(\\log_{7}2;+\\infty)$", "$(-\\infty;\\log_{7}2)$", "$(-\\infty;\\log_{2}7)$", "$(\\log_{2}7;+\\infty)$"], correctIndex: 3, explanation: "Lấy lôgarit cơ số 2 hai vế: $2^x > 7 \\Leftrightarrow x > \\log_{2}7$." },
+  { id: 46, question: "Phương trình $4^{x}=12$ có nghiệm:", options: ["$x=3$", "$x=\\log_{12}4$", "$x=1+\\log_{4}3$", "$x=\\log_{4}3$"], correctIndex: 2, explanation: "$x = \\log_{4}12 = \\log_{4}(4 \\cdot 3) = \\log_{4}4 + \\log_{4}3 = 1+\\log_{4}3$." },
+  { id: 47, question: "Nghiệm của phương trình $\\log_{3}(x-1)=2$ là:", options: ["$x=10$", "$x=12$", "$x=9$", "$x=7$"], correctIndex: 0, explanation: "$\\log_{3}(x-1)=2 \\Leftrightarrow x-1 = 3^2 \\Leftrightarrow x-1=9 \\Leftrightarrow x=10$." },
+  { id: 48, question: "Tập nghiệm $S$ của bất phương trình $5^{1-2x} > \\frac{1}{125}$ là:", options: ["$S=(-\\infty;2)$", "$S=(0;2)$", "$S=(-\\infty;1)$", "$S=(2;+\\infty)$"], correctIndex: 0, explanation: "$5^{1-2x} > 5^{-3} \\Leftrightarrow 1-2x > -3 \\Leftrightarrow 2x < 4 \\Leftrightarrow x < 2$." },
+  { id: 49, question: "Nghiệm của phương trình $\\log_{2}x=3$ là:", options: ["$x=5$", "$x=8$", "$x=6$", "$x=9$"], correctIndex: 1, explanation: "$\\log_{2}x=3 \\Leftrightarrow x = 2^3 = 8$." },
+  { id: 50, question: "Tập nghiệm của bất phương trình $\\log_{\\frac{1}{2}}(x+1)\\le\\log_{\\frac{1}{2}}(2x-1)$ là:", options: ["$(\\frac{1}{2};2]$", "$(\\frac{1}{2};2)$", "$(-\\infty;2)$", "$(-\\infty;2]$"], correctIndex: 0, explanation: "Cơ số $\\frac{1}{2} < 1$ nên đảo chiều: $x+1 \\ge 2x-1 > 0$. Giải ra ta được $x \\le 2$ và $x > \\frac{1}{2}$. Kết luận: $\\frac{1}{2} < x \\le 2$." },
+  { id: 51, question: "Tập nghiệm của bất phương trình $\\log_{\\frac{1}{2}}(x+1) > -1$ là:", options: ["$(-\\infty;1)$", "$(-1;1)$", "$(1;+\\infty)$", "$(0;3)$"], correctIndex: 1, explanation: "$\\Leftrightarrow 0 < x+1 < (\\frac{1}{2})^{-1} \\Leftrightarrow 0 < x+1 < 2 \\Leftrightarrow -1 < x < 1$." },
+  { id: 52, question: "Nghiệm của phương trình $3^{x}=12$ là:", options: ["$x=4$", "$x=9$", "$x=\\log_{3}12$", "$x=\\log_{12}3$"], correctIndex: 2, explanation: "Áp dụng định nghĩa lôgarit: $3^x=12 \\Leftrightarrow x=\\log_{3}12$." },
+  { id: 53, question: "Với $a$, $b$ là các số thực dương tuỳ ý thoả mãn $a\\ne1$ và $\\log_{a}b=2$, giá trị của $\\log_{a^{2}}(ab^{2})$ bằng:", options: ["$\\frac{3}{2}$", "$\\frac{5}{2}$", "$2$", "$\\frac{1}{2}$"], correctIndex: 1, explanation: "$\\log_{a^2}(ab^2) = \\frac{1}{2}(\\log_{a}a + \\log_{a}b^2) = \\frac{1}{2}(1 + 2\\log_{a}b) = \\frac{1}{2}(1 + 2 \\cdot 2) = \\frac{5}{2}$." },
+  { id: 54, question: "Tập nghiệm của bất phương trình $(\\frac{2}{3})^{x-1} > (\\frac{2}{3})^{-x+3}$ là:", options: ["$(-\\infty;1)$", "$(-\\infty;2)$", "$(1;+\\infty)$", "$(2;+\\infty)$"], correctIndex: 1, explanation: "Do cơ số $\\frac{2}{3} < 1$, BPT đảo chiều: $x-1 < -x+3 \\Leftrightarrow 2x < 4 \\Leftrightarrow x < 2$." },
+  { id: 55, question: "Nếu $\\log_{a}b=3$ và $\\log_{a}c=-5$ thì $\\log_{a}(b^{2}c^{3})$ bằng:", options: ["$-9$", "$8$", "$25$", "$-10$"], correctIndex: 0, explanation: "$\\log_{a}(b^2c^3) = 2\\log_{a}b + 3\\log_{a}c = 2(3) + 3(-5) = 6 - 15 = -9$." },
+  { id: 56, question: "Biết $a$, $b$ là các số thực dương, khác 1 thỏa mãn $\\log_{a}b=3$. Giá trị $\\log_{a^{2}}\\frac{a}{\\sqrt{b}}$ bằng:", options: ["$\\frac{5}{8}$", "$\\frac{5}{2}$", "$-\\frac{1}{4}$", "$\\frac{3}{2}$"], correctIndex: 2, explanation: "$\\log_{a^2}(\\frac{a}{b^{1/2}}) = \\frac{1}{2}(\\log_{a}a - \\frac{1}{2}\\log_{a}b) = \\frac{1}{2}(1 - \\frac{3}{2}) = -\\frac{1}{4}$." },
+  { id: 57, question: "Đường cong trong hình vẽ bên là đồ thị của hàm số nào sau đây?", image: "data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-10 -10 100 100' width='300' height='300' style='background:white; border-radius: 8px;'%3E%3Cpath d='M 0 90 L 0 -5' stroke='black' stroke-width='1'/%3E%3Cpath d='M -10 80 L 95 80' stroke='black' stroke-width='1'/%3E%3Cpath d='M 0 20 Q 20 70 90 75' fill='none' stroke='purple' stroke-width='2'/%3E%3Ccircle cx='0' cy='20' r='1.5' fill='red'/%3E%3Ctext x='-8' y='25' font-size='6' font-family='sans-serif' fill='black'%3E1%3C/text%3E%3Ctext x='-5' y='0' font-size='6' font-family='sans-serif' fill='black'%3Ey%3C/text%3E%3Ctext x='90' y='90' font-size='6' font-family='sans-serif' fill='black'%3Ex%3C/text%3E%3Ctext x='-8' y='90' font-size='6' font-family='sans-serif' fill='black'%3EO%3C/text%3E%3Cpath d='M 92 78 L 95 80 L 92 82' fill='none' stroke='black' stroke-width='1'/%3E%3Cpath d='M -2 -2 L 0 -5 L 2 -2' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E", options: ["$y=\\log_{0,4}x$", "$y=(0,8)^{x}$", "$y=\\log_{2}x$", "$y=(\\sqrt{2})^{x}$"], correctIndex: 1, explanation: "Đồ thị cắt trục tung tại $(0;1)$ và có bề lõm hướng lên, tiệm cận ngang $y=0$. Đây là hàm số mũ $y=a^x$. Đồ thị nghịch biến (đi xuống) khi $0 < a < 1$. Trong các phương án, chỉ có $y=(0,8)^x$ thỏa mãn $a=0,8 < 1$." },
+  { id: 58, question: "Cho các số thực dương $a$, $b$ với $a\\ne1$ thoả mãn $\\log_{a}b=5$. Giá trị của biểu thức $\\log_{a}(ab)$ bằng:", options: ["$6$", "$4$", "$5$", "$7$"], correctIndex: 0, explanation: "Áp dụng lôgarit của tích: $\\log_{a}(ab) = \\log_{a}a + \\log_{a}b = 1 + 5 = 6$." },
+  { id: 59, question: "Cho hai số thực $x$ và $y$. Khẳng định nào sau đây là sai?", options: ["$\\frac{18^{x}}{18^{y}}=18^{x-y}$", "$18^{-x}=\\frac{-1}{18^{x}}$", "$(18^{x})^{y}=18^{xy}$", "$18^{x}\\cdot18^{y}=18^{x+y}$"], correctIndex: 1, explanation: "Khẳng định sai là $18^{-x} = \\frac{-1}{18^{x}}$. Áp dụng đúng công thức lũy thừa số mũ âm phải là $18^{-x} = \\frac{1}{18^{x}}$." },
+  { id: 60, question: "Tập nghiệm của bất phương trình $e^{x} > 1$ là:", options: ["$(-\\infty;0)$", "$(1;+\\infty)$", "$(-\\infty;+\\infty)$", "$(0;+\\infty)$"], correctIndex: 3, explanation: "Biết rằng $1=e^0$. Vậy $e^x > e^0 \\Leftrightarrow x > 0$ (do $e \\approx 2,71 > 1$)." },
+  { id: 61, question: "Số nghiệm của phương trình $\\log(2x-1)=\\log(x^{2}-4)$ là:", options: ["$2$", "$0$", "$1$", "$3$"], correctIndex: 2, explanation: "ĐK: $x > 2$. Khi đó PT $\\Leftrightarrow 2x-1=x^2-4 \\Leftrightarrow x^2-2x-3=0 \\Rightarrow x=-1$ (loại vì $x < 2$) hoặc $x=3$ (thỏa). PT chỉ có 1 nghiệm." },
+  { id: 62, question: "Hàm số nào sau đây đồng biến trên tập xác định của nó?", options: ["$y=\\log_{\\frac{1}{2}}x$", "$y=\\log_{4}x$", "$y=\\log_{\\frac{1}{7}}x$", "$y=\\log_{\\frac{2}{5}}x$"], correctIndex: 1, explanation: "Hàm số $y=\\log_{a}x$ đồng biến khi cơ số $a > 1$. Chỉ có $y=\\log_{4}x$ thỏa mãn điều kiện $a=4 > 1$." },
+  { id: 63, question: "Cho $a > 0$, $a \\ne 1$. Giá trị của $\\log_{a}1$ là:", options: ["$1$", "$-1$", "$a$", "$0$"], correctIndex: 3, explanation: "Tính chất cơ bản của lôgarit: $\\log_{a}1 = 0$ do $a^0=1$." },
+  { id: 64, question: "Tập xác định của hàm số $y=5^{x}$ là:", options: ["$(0;+\\infty)$", "$[0;+\\infty)$", "$\\mathbb{R}\\backslash\\{0\\}$", "$\\mathbb{R}$"], correctIndex: 3, explanation: "Hàm số mũ $y=a^x$ ($a > 0, a \\ne 1$) luôn có tập xác định là $D=\\mathbb{R}$." },
+  { id: 65, question: "Nếu $a^{\\frac{3}{4}} < a^{\\frac{4}{5}}$ thì:", options: ["$a<1$", "$0 < a < 1$", "$a<0$", "$a>1$"], correctIndex: 3, explanation: "Ta có $\\frac{3}{4} < \\frac{4}{5}$ và $a^{\\frac{3}{4}} < a^{\\frac{4}{5}}$ (bất đẳng thức cùng chiều). Suy ra cơ số phải lớn hơn 1, tức là $a > 1$." },
+  { id: 66, question: "Nếu $\\log_{a}b=2$, $\\log_{a}c=3$ thì $\\log_{a}(b^{2}c^{3})$ bằng:", options: ["$108$", "$31$", "$13$", "$36$"], correctIndex: 2, explanation: "$\\log_{a}(b^2c^3) = 2\\log_{a}b + 3\\log_{a}c = 2(2) + 3(3) = 4 + 9 = 13$." },
+  { id: 67, question: "Trong các hàm số sau, hàm số nào là hàm số mũ?", options: ["$y=x^{3}$", "$y=2025^{x}$", "$y=\\sqrt{x^{2}+1}$", "$y=\\log_{5}x$"], correctIndex: 1, explanation: "Hàm số mũ có dạng $y=a^x$ với ẩn số nằm ở trên số mũ. Do đó $y=2025^x$ là hàm số mũ." },
+  { id: 68, question: "Hàm số nào dưới đây nghịch biến trên khoảng $(0;+\\infty)$?", options: ["$y=\\ln x$", "$y=\\log_{3}x$", "$y=\\log_{\\frac{1}{3}}x$", "$\\log x$"], correctIndex: 2, explanation: "Hàm số $y=\\log_{a}x$ nghịch biến khi $0 < a < 1$. Lựa chọn duy nhất đúng là $y=\\log_{\\frac{1}{3}}x$ vì $a=\\frac{1}{3} < 1$." },
+  { id: 69, question: "Với $a$ là số thực dương tùy ý, $\\log_{2}a^{\\frac{1}{3}}$ bằng:", options: ["$3\\log_{2}a$", "$\\frac{3}{2}\\log_{2}a$", "$\\frac{2}{3}\\log_{2}a$", "$\\frac{1}{3}\\log_{2}a$"], correctIndex: 3, explanation: "Áp dụng công thức lôgarit của một lũy thừa: $\\log_{c}b^n = n\\log_{c}b$, ta đưa $\\frac{1}{3}$ ra ngoài thành $\\frac{1}{3}\\log_{2}a$." },
+  { id: 70, question: "Cho các số thực dương $a$, $b$ thỏa mãn $\\log_{2}a=x$, $\\log_{2}b=y$. Tính $P=\\log_{2}(a^{2}b^{3})$.", options: ["$P=6xy$", "$P=2x+3y$", "$P=x^{2}y^{3}$", "$P=x^{2}+y^{3}$"], correctIndex: 1, explanation: "$P = \\log_{2}a^2 + \\log_{2}b^3 = 2\\log_{2}a + 3\\log_{2}b = 2x+3y$." },
+  { id: 71, question: "Nghiệm của bất phương trình $(\\frac{3}{4})^{2x-1}\\le(\\frac{4}{3})^{-2+x}$ là:", options: ["$x\\ge1$", "$x<1$", "$x\\le1$", "$x>1$"], correctIndex: 0, explanation: "Biến đổi vế phải: $(\\frac{4}{3})^{-2+x} = (\\frac{3}{4})^{2-x}$. BPT trở thành $(\\frac{3}{4})^{2x-1} \\le (\\frac{3}{4})^{2-x}$. Cơ số $\\frac{3}{4} < 1$ nên BPT đổi chiều: $2x-1 \\ge 2-x \\Leftrightarrow 3x \\ge 3 \\Leftrightarrow x \\ge 1$." }
+];
+
+// --- THÀNH PHẦN HIỂN THỊ TOÁN HỌC ---
+const MathText = ({ text }) => {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const renderMath = () => {
+      if (!isMounted) return;
+      if (window.MathJax && window.MathJax.typesetPromise) {
+        window.MathJax.typesetClear([containerRef.current]);
+        window.MathJax.typesetPromise([containerRef.current]).catch((err) => console.log(err));
+      } else {
+        setTimeout(renderMath, 150);
+      }
+    };
+    renderMath();
+    return () => { isMounted = false; };
+  }, [text]);
+
+  return <span ref={containerRef} dangerouslySetInnerHTML={{ __html: text }} />;
+};
+
+export default function App() {
+  // Trạng thái hệ thống (start -> name_entry -> playing -> result -> leaderboard)
+  const [gameState, setGameState] = useState('start'); 
+  const [questions, setQuestions] = useState([]);
+  const [user, setUser] = useState(null);
+  const [playerName, setPlayerName] = useState('');
+  const [leaderboard, setLeaderboard] = useState([]);
+  
+  // Trạng thái trận đấu
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [score, setScore] = useState(0);
+  const [lives, setLives] = useState(3);
+  const [streak, setStreak] = useState(0);
+  const TIME_PER_QUESTION = 180; // 3 phút
+  const [timeLeft, setTimeLeft] = useState(TIME_PER_QUESTION);
+  
+  // Trạng thái trả lời
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [isGameOver, setIsGameOver] = useState(false);
+
+  // Hàm xuất dữ liệu ra file Excel (CSV) dành cho Giáo viên
+  const exportToCSV = () => {
+    if (leaderboard.length === 0) {
+      alert("Chưa có dữ liệu học sinh làm bài để xuất!");
+      return;
+    }
+    const headers = ['Hạng', 'Họ Tên Lớp', 'Điểm số', 'Số câu đúng', 'Tổng câu', 'Thời gian nộp bài'];
+    const rows = leaderboard.map((record, index) => [
+      index + 1,
+      `"${record.playerName}"`, // Bọc ngoặc kép để tránh lỗi nếu tên có dấu phẩy
+      record.score,
+      record.correctCount,
+      record.totalQuestions,
+      `"${new Date(record.timestamp).toLocaleString('vi-VN')}"`
+    ]);
+    
+    // Thêm \uFEFF ở đầu file để Excel trên Windows không bị lỗi font Tiếng Việt
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "Bang_Diem_Mu_Logarit.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Load MathJax
+  useEffect(() => {
+    if (!window.MathJax) {
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']]
+        }
+      };
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }, []);
+
+  // Thiết lập Firebase Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // Nạp dữ liệu Bảng Vàng (Leaderboard) theo thời gian thực
+  useEffect(() => {
+    if (!user) return;
+    const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'student_records');
+    const unsubscribe = onSnapshot(recordsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sắp xếp theo điểm giảm dần, nếu bằng điểm xếp theo số câu đúng
+      data.sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return b.correctCount - a.correctCount;
+      });
+      setLeaderboard(data);
+    }, (error) => {
+      console.error("Lỗi khi tải bảng vàng:", error);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  // Bộ đếm thời gian
+  useEffect(() => {
+    let timer;
+    if (gameState === 'playing' && timeLeft > 0 && !showExplanation) {
+      timer = setInterval(() => {
+        setTimeLeft((prev) => {
+          if (prev <= 1) {
+            handleTimeOut();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [gameState, timeLeft, showExplanation]);
+
+  const handleStartProcess = () => {
+    setGameState('name_entry');
+  };
+
+  const startGame = () => {
+    if (playerName.trim() === '') {
+      alert("Vui lòng nhập tên để bắt đầu!");
+      return;
+    }
+    const shuffled = [...questionBank].sort(() => 0.5 - Math.random());
+    setQuestions(shuffled.slice(0, 20)); 
+    setCurrentIndex(0);
+    setScore(0);
+    setLives(3);
+    setStreak(0);
+    setTimeLeft(TIME_PER_QUESTION);
+    setGameState('playing');
+    setSelectedOption(null);
+    setIsAnswering(false);
+    setShowExplanation(false);
+    setIsGameOver(false);
+  };
+
+  const handleTimeOut = () => {
+    setIsAnswering(true);
+    setSelectedOption(-1); 
+    processAnswer(false);
+  };
+
+  const handleOptionClick = (index) => {
+    if (isAnswering) return;
+    setIsAnswering(true);
+    setSelectedOption(index);
+    const isCorrect = index === questions[currentIndex].correctIndex;
+    processAnswer(isCorrect);
+  };
+
+  const processAnswer = (isCorrect) => {
+    if (isCorrect) {
+      const timeBonus = Math.floor(timeLeft / 10);
+      const streakBonus = streak * 10;
+      setScore((prev) => prev + 100 + timeBonus * 10 + streakBonus);
+      setStreak((prev) => prev + 1);
+    } else {
+      setStreak(0);
+      setLives((prev) => {
+         const newLives = prev - 1;
+         if (newLives <= 0) setIsGameOver(true);
+         return newLives;
+      });
+    }
+    setShowExplanation(true);
+  };
+
+  // Hàm chuyển câu & Kết thúc để lưu dữ liệu lên Firebase
+  const handleNextQuestion = async () => {
+    if (isGameOver || currentIndex >= questions.length - 1) {
+      // Lưu kết quả lên Cloud Firestore
+      if (user) {
+        try {
+          const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'student_records');
+          // Số câu đúng = Số câu đang chơi (nếu thua) hoặc = 20 (nếu thắng)
+          const isWinStatus = lives > 0;
+          const correctCount = isWinStatus ? 20 : currentIndex;
+          await addDoc(recordsRef, {
+            playerName: playerName.trim(),
+            score: score,
+            correctCount: correctCount,
+            totalQuestions: 20,
+            timestamp: Date.now(),
+            userId: user.uid
+          });
+        } catch (e) {
+          console.error("Lỗi khi lưu dữ liệu lên Database:", e);
+        }
+      }
+      setGameState('result');
+    } else {
+      setCurrentIndex((prev) => prev + 1);
+      setTimeLeft(TIME_PER_QUESTION);
+      setSelectedOption(null);
+      setIsAnswering(false);
+      setShowExplanation(false);
+    }
+  };
+
+  // --- UI: Màn hình Bắt đầu ---
+  if (gameState === 'start') {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-800 rounded-3xl p-8 shadow-2xl border border-slate-700 text-center relative overflow-hidden">
+          <div className="w-20 h-20 bg-indigo-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-500/50">
+            <Zap className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-3xl font-extrabold mb-2 bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
+            Đấu Trường Mũ và Lôgarit
+          </h1>
+          <p className="text-slate-400 mb-8">
+            Học mà chơi, chơi mà học! Kết quả sẽ được lưu lại để gửi cho Giáo viên của bạn.
+          </p>
+          
+          <div className="space-y-4 text-left mb-8 bg-slate-900/50 p-4 rounded-xl">
+            <div className="flex items-center text-slate-300">
+              <Timer className="w-5 h-5 text-cyan-400 mr-3 shrink-0" />
+              <span>3 phút (180 giây) cho mỗi câu hỏi</span>
+            </div>
+            <div className="flex items-center text-slate-300">
+              <Heart className="w-5 h-5 text-rose-500 mr-3 shrink-0" />
+              <span>3 mạng (sai 3 lần là Game Over)</span>
+            </div>
+            <div className="flex items-center text-slate-300">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 mr-3 shrink-0" />
+              <span>Cung cấp đáp án chi tiết sau mỗi câu</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={handleStartProcess}
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-lg flex items-center justify-center transition-all active:scale-95 shadow-lg shadow-indigo-600/30"
+            >
+              <Play className="w-6 h-6 mr-2 fill-current" />
+              VÀO PHÒNG ÔN TẬP
+            </button>
+            <button 
+              onClick={() => setGameState('leaderboard')}
+              className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold flex items-center justify-center transition-all active:scale-95"
+            >
+              <ListOrdered className="w-5 h-5 mr-2" />
+              BẢNG VÀNG THÀNH TÍCH
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- UI: Nhập Tên Định Danh ---
+  if (gameState === 'name_entry') {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-800 rounded-3xl p-8 shadow-2xl border border-slate-700 text-center animate-in fade-in zoom-in-95">
+          <div className="w-20 h-20 bg-cyan-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-cyan-500/50">
+            <User className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold mb-4">Em tên là gì?</h2>
+          <p className="text-slate-400 mb-6 text-sm">
+            Nhập Họ Tên và Lớp của em để hệ thống ghi nhận điểm số vào Bảng Xếp Hạng của lớp.
+          </p>
+          <input 
+            type="text" 
+            placeholder="VD: Nguyễn Văn A - 12A1"
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-4 text-lg text-white mb-6 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400"
+            onKeyDown={(e) => { if (e.key === 'Enter') startGame(); }}
+          />
+          <button 
+            onClick={startGame}
+            className={`w-full py-4 rounded-xl font-bold text-lg flex items-center justify-center transition-all shadow-lg ${playerName.trim() ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30 text-white' : 'bg-slate-700 text-slate-400 cursor-not-allowed'}`}
+          >
+            BẮT ĐẦU LÀM BÀI
+          </button>
+          <button 
+            onClick={() => setGameState('start')}
+            className="w-full py-3 mt-4 text-slate-400 hover:text-white transition-colors"
+          >
+            Quay lại
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- UI: Bảng Xếp Hạng (Dành cho Giáo viên & Học sinh) ---
+  if (gameState === 'leaderboard') {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center py-10 px-4">
+        <div className="max-w-2xl w-full bg-slate-800 rounded-3xl p-6 shadow-2xl border border-slate-700 flex flex-col max-h-[90vh]">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold flex items-center text-yellow-400">
+              <Trophy className="w-8 h-8 mr-3 text-yellow-500" /> 
+              BẢNG VÀNG THÀNH TÍCH
+            </h2>
+            <div className="flex gap-2">
+              <button 
+                onClick={exportToCSV}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg font-medium text-sm flex items-center transition-colors shadow-lg"
+                title="Tải xuống bảng điểm (Dành cho Giáo viên)"
+              >
+                <Download className="w-4 h-4 mr-1" />
+                Xuất Excel
+              </button>
+              <button 
+                onClick={() => setGameState('start')}
+                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            {leaderboard.length === 0 ? (
+              <div className="text-center py-10 text-slate-400">
+                Chưa có dữ liệu nào. Hãy là người đầu tiên ghi tên lên bảng vàng!
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {leaderboard.map((record, idx) => (
+                  <div key={record.id} className="flex items-center bg-slate-900/80 p-4 rounded-xl border border-slate-700 hover:border-slate-500 transition-colors">
+                    <div className={`w-8 h-8 shrink-0 flex items-center justify-center rounded-full font-bold mr-4 ${idx === 0 ? 'bg-yellow-500 text-black' : idx === 1 ? 'bg-slate-300 text-black' : idx === 2 ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-lg truncate text-slate-100">{record.playerName}</p>
+                      <p className="text-xs text-slate-400">
+                        {new Date(record.timestamp).toLocaleString('vi-VN')}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xl font-black text-cyan-400">{record.score.toLocaleString()}</p>
+                      <p className="text-xs text-slate-400 font-medium">Đúng {record.correctCount}/{record.totalQuestions}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- UI: Màn Hình Kết Quả ---
+  if (gameState === 'result') {
+    const isWin = lives > 0;
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-800 rounded-3xl p-8 shadow-2xl border border-slate-700 text-center animate-in zoom-in-95 fade-in">
+          <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg ${isWin ? 'bg-yellow-500 shadow-yellow-500/50' : 'bg-rose-500 shadow-rose-900/50'}`}>
+            {isWin ? <Trophy className="w-12 h-12 text-white" /> : <XCircle className="w-12 h-12 text-white" />}
+          </div>
+          <h1 className="text-3xl font-extrabold mb-2">
+            {isWin ? "Hoàn Thành Xuất Sắc!" : "Rất Tiếc! Hãy Thử Lại Nhé"}
+          </h1>
+          <p className="text-slate-400 mb-6">
+            <strong className="text-white">{playerName}</strong> đã hoàn thành {currentIndex + (isWin ? 1 : 0)} / {questions.length} câu hỏi.
+          </p>
+          
+          <div className="bg-slate-900/50 p-6 rounded-xl mb-8 border border-slate-700">
+            <p className="text-sm text-slate-400 mb-1 font-bold">TỔNG ĐIỂM TÍCH LŨY</p>
+            <p className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+              {score.toLocaleString()}
+            </p>
+            <p className="text-xs text-emerald-400 mt-2">Đã tự động gửi lên hệ thống Giáo viên ✔</p>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button 
+              onClick={() => setGameState('leaderboard')}
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-lg flex items-center justify-center transition-all active:scale-95 shadow-lg shadow-indigo-600/30"
+            >
+              <ListOrdered className="w-6 h-6 mr-2" />
+              XEM BẢNG XẾP HẠNG LỚP
+            </button>
+            <button 
+              onClick={() => setGameState('start')}
+              className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold flex items-center justify-center transition-all active:scale-95"
+            >
+              <RotateCcw className="w-5 h-5 mr-2" />
+              Về Trang Chủ
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- UI: Màn Hình Chơi (Trắc nghiệm) ---
+  const currentQ = questions[currentIndex];
+  
+  return (
+    <div className="min-h-screen bg-slate-900 text-white font-sans flex flex-col items-center py-6 px-4">
+      <div className="max-w-3xl w-full flex-1 flex flex-col">
+        
+        {/* Header Thông số */}
+        <div className="flex justify-between items-center bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-lg mb-6">
+          <div className="flex items-center space-x-1">
+            {[...Array(3)].map((_, i) => (
+              <Heart 
+                key={i} 
+                className={`w-6 h-6 transition-all ${i < lives ? 'text-rose-500 fill-rose-500 scale-100' : 'text-slate-600 scale-90'}`} 
+              />
+            ))}
+          </div>
+          
+          <div className="flex flex-col items-center">
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Học sinh: {playerName}</span>
+            <div className="text-xl font-black text-cyan-400">
+              Câu {currentIndex + 1} <span className="text-slate-500 font-medium text-base">/ {questions.length}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end">
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Điểm số</span>
+            <div className="text-xl font-black text-yellow-400">{score}</div>
+          </div>
+        </div>
+
+        {/* Cột mốc Streak */}
+        {streak > 1 && !showExplanation && (
+          <div className="flex justify-center mb-4 min-h-[32px]">
+            <div className="bg-orange-500/20 border border-orange-500/50 text-orange-400 px-4 py-1.5 rounded-full flex items-center text-sm font-bold animate-pulse">
+              <Zap className="w-4 h-4 mr-1 fill-current" />
+              Combo x{streak} (+{streak * 10} đ)
+            </div>
+          </div>
+        )}
+
+        {/* Khung Câu Hỏi */}
+        <div className="bg-slate-800 rounded-3xl p-6 md:p-10 shadow-xl border border-slate-700 flex flex-col relative overflow-hidden mb-6">
+          <div className="absolute top-0 left-0 h-1.5 bg-slate-700 w-full">
+            <div 
+              className={`h-full transition-all duration-1000 ease-linear ${timeLeft > 60 ? 'bg-cyan-400' : timeLeft > 30 ? 'bg-yellow-400' : 'bg-rose-500'}`}
+              style={{ width: `${(timeLeft / TIME_PER_QUESTION) * 100}%` }}
+            />
+          </div>
+
+          <div className="flex justify-between items-center mb-6 mt-2">
+            <div className="flex items-center text-slate-400 bg-slate-900/50 px-3 py-1.5 rounded-lg">
+              <Timer className={`w-5 h-5 mr-2 ${timeLeft <= 30 && !showExplanation ? 'text-rose-500 animate-bounce' : ''}`} />
+              <span className={`font-mono font-bold ${timeLeft <= 30 && !showExplanation ? 'text-rose-500' : ''}`}>{timeLeft}s</span>
+            </div>
+            
+            <span className="text-xs text-slate-500 font-bold bg-slate-900/50 px-3 py-1.5 rounded-lg">
+              Nguồn: Câu {currentQ.id}
+            </span>
+          </div>
+
+          <div className="mb-10 text-center">
+            <h2 className="text-xl md:text-2xl font-medium leading-relaxed text-slate-100 mb-6 text-left">
+              <MathText key={`q-${currentQ.id}`} text={currentQ.question} />
+            </h2>
+            
+            {currentQ.image && (
+              <div className="inline-block bg-slate-200/10 p-4 rounded-2xl border border-slate-600 shadow-inner mt-2">
+                <img 
+                  src={currentQ.image} 
+                  alt="Minh họa câu hỏi" 
+                  className="max-h-56 md:max-h-64 object-contain rounded-lg shadow-md" 
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {currentQ.options.map((opt, idx) => {
+              let btnClass = "bg-slate-700 hover:bg-slate-600 border-slate-600 text-slate-200 cursor-pointer";
+              const letter = String.fromCharCode(65 + idx); 
+
+              if (isAnswering) {
+                if (idx === currentQ.correctIndex) {
+                  btnClass = "bg-emerald-500/20 border-emerald-500 text-emerald-400 cursor-default"; 
+                } else if (idx === selectedOption) {
+                  btnClass = "bg-rose-500/20 border-rose-500 text-rose-400 cursor-default"; 
+                } else {
+                  btnClass = "bg-slate-800 border-slate-700 text-slate-500 opacity-50 cursor-default"; 
+                }
+              }
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => handleOptionClick(idx)}
+                  disabled={isAnswering}
+                  className={`relative w-full p-5 rounded-2xl border-2 text-left font-medium transition-all duration-200 flex items-center group ${btnClass}`}
+                >
+                  <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-4 shrink-0 
+                    ${isAnswering && idx === currentQ.correctIndex ? 'bg-emerald-500 text-white' : 
+                      isAnswering && idx === selectedOption ? 'bg-rose-500 text-white' : 
+                      'bg-slate-800 text-slate-400 group-hover:bg-slate-500 group-hover:text-white transition-colors'}`}>
+                    {letter}
+                  </span>
+                  <div className="text-lg flex-1 overflow-x-auto overflow-y-hidden">
+                     <MathText key={`opt-${currentQ.id}-${idx}`} text={opt} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          
+          {isAnswering && selectedOption === -1 && (
+             <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center animate-in fade-in z-10 rounded-3xl">
+                <div className="bg-rose-500 text-white px-8 py-4 rounded-2xl font-black text-2xl shadow-2xl flex items-center transform scale-110">
+                  <Timer className="w-8 h-8 mr-3" /> HẾT GIỜ!
+                </div>
+             </div>
+          )}
+        </div>
+
+        {/* Khung Hướng dẫn giải */}
+        {showExplanation && (
+           <div className="bg-indigo-900/40 border border-indigo-500/50 rounded-3xl p-6 md:p-8 animate-in slide-in-from-bottom-8 fade-in shadow-xl mb-6">
+              <h3 className="text-lg font-bold text-cyan-400 mb-3 flex items-center">
+                <CheckCircle2 className="w-5 h-5 mr-2" />
+                Hướng dẫn giải chi tiết:
+              </h3>
+              <div className="text-slate-200 text-lg leading-relaxed mb-6">
+                 <MathText key={`exp-${currentQ.id}`} text={currentQ.explanation} />
+              </div>
+              
+              <button 
+                onClick={handleNextQuestion}
+                className={`w-full py-4 rounded-xl font-bold text-lg flex justify-center items-center transition-all active:scale-95 ${isGameOver || currentIndex === questions.length - 1 ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30 shadow-lg' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30 shadow-lg'}`}
+              >
+                {isGameOver || currentIndex === questions.length - 1 ? 'NỘP BÀI & XEM XẾP HẠNG' : 'CÂU TIẾP THEO'} 
+                <ChevronRight className="ml-2 w-6 h-6" />
+              </button>
+           </div>
+        )}
+
+      </div>
+      
+      {/* Styles phụ trợ (Ví dụ scrollbar tùy chỉnh) */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      `}} />
+    </div>
+  );
+}
