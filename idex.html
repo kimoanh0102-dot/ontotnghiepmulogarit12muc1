@@ -8,12 +8,12 @@
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- React & ReactDOM CDN -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- React & ReactDOM CDN (Đã cập nhật sang cdnjs để tương thích tốt nhất với GitHub Pages) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
   
-  <!-- Babel CDN (Để biên dịch JSX ngay trên trình duyệt) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Babel CDN (Đã cập nhật sang cdnjs) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 
   <!-- Cấu hình MathJax để vẽ công thức Toán học chuẩn -->
   <script>
@@ -41,8 +41,8 @@
   <!-- Vùng chứa ứng dụng React -->
   <div id="root"></div>
 
-  <!-- Mã nguồn chính của ứng dụng -->
-  <script type="text/babel">
+  <!-- Mã nguồn chính của ứng dụng (Thêm data-presets="react" để Babel dịch chuẩn xác) -->
+  <script type="text/babel" data-presets="react">
     const { useState, useEffect, useRef } = React;
 
     // --- BỘ ICON INLINE (Thay thế cho thư viện bên ngoài) ---
@@ -153,7 +153,8 @@
         return () => { isMounted = false; };
       }, [text]);
 
-      return <span ref={containerRef} dangerouslySetInnerHTML={{ __html: text }} />;
+      // Thay vì innerHTML, sử dụng text node an toàn để tránh xung đột với các dấu < > của Toán học
+      return <span ref={containerRef}>{text}</span>;
     };
 
     // --- ỨNG DỤNG CHÍNH ---
